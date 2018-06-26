@@ -20,13 +20,8 @@ it shares, and only the disk space and network bandwidth actually used by the us
 as proof of work, thus improving the overall network performance and efficiency.
 
 
-BitcoinFile is a fully self-monitored decentralized community. Resource-sharers (miners) and users are 
-the community participants. Total distribution of BIFI is about 21 billion, among this about 17 billion 
-of all BIFI will be air dropped to the current holders of Bitcoins on a 1:1000 basis, and another 4 billion 
-will be distributed to each resource sharer (miners) on a POW basis according to the community design rules. 
-Network users have to pay BIFI when using BitcoinFile network. The BitcoinFile foundation will mine 210 million 
-BIFI in advance, of which 110 million will be used for ecological construction and marketing and the other 
-100 million will be used for team incentives.
+
+BitcoinFile is a fully self-monitored decentralized community. Resource-sharers (miners) and users are the community participants. About 17 billion of BitcoinFiles will be air dropped to the current holders of Bitcoins, and another 3 billion will be distributed to each resource sharer (miners) on a POC basis according to the community design rules. Network users have to pay BiFi when using BitcoinFile's network. The BitcoinFile foundation will mine 1.05 billion BiFi in advance, of which 0.7 billion will be used for marketing and ecological construction and the other 0.35 billion will be used for team incentives. The part used for team incentives will be locked for 4 years, unlocking 20% each year.
 
 
 BitcoinFile(BIFI) is a fork of Bitcoin blockchain that occurs at block height 501225,and therewith a new 
