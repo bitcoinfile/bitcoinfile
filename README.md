@@ -109,7 +109,7 @@ Iispoc =1 indicates starting mining.
 
 prune=550
 
-iiconfig=c:\seeds\;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
+iiconfig=c:\seeds\\;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
 
 iispoc=1
 
