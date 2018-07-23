@@ -65,3 +65,63 @@ source                      | algorithm|target
 Each nNonce corresponds to a seed file. Each height selects 
 one of the 8192 columns based on the hash value of the previous 
 block and participates in the construction of a new block header.
+
+Procedures of mining configuration:
+-------
+1. Create the text configuration file bitcoinfile.conf.
+
+2. Add the configuration item iiconfig in the configuration file.
+iiconfig=C:\seeds\ii\;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;120;
+a. C:\seeds\ii\; [Mining Directory] represents the storage directory of mining seed which can be set up on any existed disk location (disk C is not required), the directory ahead is an example.
+b. 1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; [Transfer Address] represents the mining address (i.e. a bitcoin address) associated with the seed.
+c. 120; [Disk Space] represents a total size of 120G(minimum 1G, and the maximum is depending on the disk space remaining in your folder).
+
+(Note: '\' at the end of a directory is required when configuring Windows system, and ‘/’ at the end of directory is required when configuring Linux system.
+A “;” is required to separate Mining Directory, Transferr Address, Disk Space, and to end every parameter.)
+
+3. Add item iispoc to the configuration file.
+Iispoc =1 indicates starting mining.
+
+4. Run bitcoinfiled.exe, then stop after one minute (make sure the Windows operating system disk or the /root folder disk of Ubuntu has more than 200G of remaining space).
+
+5. Open the %appdata%\Bitcoinfile directory on Windows, or open /root/.bitcoinfile directory on Ubuntu.
+
+6. Copy the bitcoinfile.conf which is created and configured in the first three steps to the directory opened in step 5.
+
+7. After starting bitcoinfile-qt.exe, click the “Accept/Request Payment" button to generate a payment receiving address (or to generate a payment receiving address for other wallets like bitpie).
+
+8. Copy the payment receiving address, and replace the invalid configuration address "1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" in iiconfig to the new address, and save the file.
+
+9. Run bitcoinfiled.exe again to start BiFi mining.
+
+10. The bitcoinfiled.exe needs to synchronize complete full nodal data before mining (this process takes time depending on the current full nodal supply capacity and your download bandwidth).
+
+11. If the payment receiving address needs to be replaced during mining, the mining procedure needs to be stopped and the configuration files need to be modified, which means all the documents under the "C:\seeds ii\" directory need to be deleted and the mining procedure needs to launch again.
+
+12. By adding the configuration item prune=550 through bitcoinfile.conf, a 160G block data can be clipped to 4-5G (the download date is still more than 160G, but it can be clipped while downloading).
+
+13. Windows version download address https://explorer.bitcoinfile.org/download/BiFiCore (Beta) _Windows_x86. Zip
+
+14 Ubuntu version download address https://explorer.bitcoinfile.org/download/BiFiCore (Beta) _Ubuntu16_x86_64. Zip
+
+
+#===========The Windows configuration file case begins===========
+
+prune=550
+
+iiconfig=c:\seeds\;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
+
+iispoc=1
+
+#===========Configuration file case ends===========
+
+
+#===========Ubuntu16 configuration file case begins===========
+
+prune=550
+
+iiconfig=/root/seeds/;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
+
+iispoc=1
+
+#===========Configuration file case ends===========
