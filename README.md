@@ -106,14 +106,22 @@ Iispoc =1 indicates starting mining.
 
 
 #===========The Windows configuration file case begins===========
+
 prune=550
+
 iiconfig=c:\seeds\;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
+
 iispoc=1
+
 #===========Configuration file case ends===========
 
 
 #===========Ubuntu16 configuration file case begins===========
+
 prune=550
+
 iiconfig=/root/seeds/;1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx;20;
+
 iispoc=1
+
 #===========Configuration file case ends===========
