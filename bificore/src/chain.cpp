@@ -13,6 +13,9 @@ void CChain::SetTip(CBlockIndex *pindex) {
         vChain.clear();
         return;
     }
+	if (pindex->nHeight > m_iMaxHeight){
+		m_iMaxHeight = pindex->nHeight;
+	}
     vChain.resize(pindex->nHeight + 1);
     while (pindex && vChain[pindex->nHeight] != pindex) {
         vChain[pindex->nHeight] = pindex;

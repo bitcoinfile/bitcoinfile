@@ -79,6 +79,10 @@ uint64_t nPruneTarget = 0;
 int64_t nMaxTipAge = DEFAULT_MAX_TIP_AGE;
 bool fEnableReplacement = DEFAULT_ENABLE_REPLACEMENT;
 
+bool fEnableSyncSeedCheck = DEFAULT_SYNC_CHECK;
+
+bool fEnableLoadSeedCheck = DEFAULT_LOAD_CHECK;
+
 uint256 hashAssumeValid;
 arith_uint256 nMinimumChainWork;
 
@@ -95,8 +99,6 @@ CScript COINBASE_FLAGS;
 
 const std::string strMessageMagic = "Bitcoin File Signed Message:\n";
 
-extern std::unordered_map<uint512Index, uint256, Hash512Hasher>	g_oNewHashCatchMap;
-extern CCriticalSection											g_oNewHashCatchMapMutex;
 extern std::string												g_sHashFolderRoot;
 
 // Internal stuff
@@ -1009,7 +1011,8 @@ static bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMes
 }
 
 static bool CheckBlockUnique(const CBlock& block, const Consensus::Params& consensusParams){
-	if( block.nVersion & VERSIONBITS_FORK_II ){
+	if( ( block.nVersion & VERSIONBITS_FORK_II ) && 
+		( block.nHeight < BIFI_UPDATE_V2 ) ){
 		std::string lstrPubkey = HexStr( block.vtx[0]->vout[0].scriptPubKey );
 		if( lstrPubkey.length() > 0 ){
 			uint256 lohashUnique;
@@ -1860,16 +1863,28 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     LogPrint(BCLog::BENCH, "      - Connect %u transactions: %.2fms (%.3fms/tx, %.3fms/txin) [%.2fs]\n", (unsigned)block.vtx.size(), 0.001 * (nTime3 - nTime2), 0.001 * (nTime3 - nTime2) / block.vtx.size(), nInputs <= 1 ? 0 : 0.001 * (nTime3 - nTime2) / (nInputs-1), nTimeConnect * 0.000001);
 
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
-	if (block.vtx[0]->GetValueOut() > blockReward)
-			        return state.DoS(100,
-                         error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
-                               block.vtx[0]->GetValueOut(), blockReward),
-                               REJECT_INVALID, "bad-cb-amount");
 
+	if( ( block.nVersion & VERSIONBITS_FORK_II )  && 
+		( block.nHeight < BIFI_UPDATE_V2 ) )
+	{
+		if (block.vtx[0]->vout[0].nValue != blockReward)
+			return state.DoS(100,
+			error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
+			block.vtx[0]->GetValueOut(), blockReward),
+			REJECT_INVALID, "bad-cb-amount");
 
-	if (false == CheckBlockUnique(block, chainparams.GetConsensus())){
-		return false;
+		if (false == CheckBlockUnique(block, chainparams.GetConsensus())){
+			return false;
+		}
 	}
+	else{
+		if (block.vtx[0]->GetValueOut() > blockReward)
+			return state.DoS(100,
+			error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
+			block.vtx[0]->GetValueOut(), blockReward),
+			REJECT_INVALID, "bad-cb-amount");
+	}
+
 	
     if (!control.Wait())
         return state.DoS(100, error("%s: CheckQueue failed", __func__), REJECT_INVALID, "block-validation-failed");
@@ -1912,36 +1927,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     LogPrint(BCLog::BENCH, "    - Callbacks: %.2fms [%.2fs]\n", 0.001 * (nTime6 - nTime5), nTimeCallbacks * 0.000001);
 
     return true;
-}
-
-void WriteHashToDisk(){
-
-	std::string lstrPath = g_sHashFolderRoot + "hashindex";
-	FILE* lpFile = fopen(lstrPath.c_str(), "rb+");
-	if (lpFile == 0){
-		lpFile = fopen(lstrPath.c_str(), "wb");
-	}
-	int liTotal = 0;
-	if ( lpFile ){
-		fseek(lpFile,0L,SEEK_END);
-		uint32_t liSize = ftell( lpFile );
-		liSize /= 98;
-		liSize *= 98;
-		fseek( lpFile, liSize, 0 );
-		char lcPart = '_';
-		LOCK(g_oNewHashCatchMapMutex);
-		std::unordered_map<uint512Index, uint256, Hash512Hasher>::iterator liIter;
-		for (liIter = g_oNewHashCatchMap.begin(); liIter != g_oNewHashCatchMap.end(); ++liIter){
-			fwrite( &lcPart, 1, 1, lpFile);
-			fwrite( liIter->first.loLeft.begin(),  1, 32, lpFile);
-			fwrite( liIter->first.loRight.begin(), 1, 32, lpFile);
-			fwrite( liIter->second.begin(),		   1, 32, lpFile );
-			fwrite( &lcPart, 1, 1, lpFile);
-			liTotal++;
-		}
-		fclose(lpFile);
-		g_oNewHashCatchMap.clear();
-	}
 }
 
 /**
@@ -2031,7 +2016,6 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
             if (fFlushForPrune)
                 UnlinkPrunedFiles(setFilesToPrune);
             nLastWrite = nNow;
-			WriteHashToDisk();
         }
         // Flush best chain related state. This can only be done if the blocks / block index write was also done.
         if (fDoFullFlush) {
@@ -2136,6 +2120,8 @@ void static UpdateTip(CBlockIndex *pindexNew, const CChainParams& chainParams) {
     if (!warningMessages.empty())
         LogPrintf(" warning='%s'", boost::algorithm::join(warningMessages, ", "));
     LogPrintf("\n");
+	printf("BIFI: height:%d\n", chainActive.Height());
+
 }
 
 /** Disconnect chainActive's tip.
@@ -2878,7 +2864,6 @@ static bool CheckBlockHeader(const CBlockHeader& block, CValidationState& state,
     // Check proof of work matches claimed amount
 	if (fCheckPOW && !CheckProofOfWork(block.nVersion, block.GetHashImp(), block.nBits, consensusParams,block.nHeight))
         return state.DoS(50, false, REJECT_INVALID, "high-hash", false, "proof of work failed");
-
     return true;
 }
 
@@ -3304,14 +3289,14 @@ static bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidation
         }
         return error("%s: %s", __func__, FormatStateMessage(state));
     }
-
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
+    // (but if it does not build on our best tip, let the SendMessages loop relay it)
     // (but if it does not build on our best tip, let the SendMessages loop relay it)
     if (!IsInitialBlockDownload() && chainActive.Tip() == pindex->pprev)
         GetMainSignals().NewPoWValidBlock(pindex, pblock);
 
     int nHeight = pindex->nHeight;
-
+    // Write block to history file
     // Write block to history file
     try {
         unsigned int nBlockSize = ::GetSerializeSize(block, SER_DISK, CLIENT_VERSION);
@@ -3319,12 +3304,12 @@ static bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidation
         if (dbp != nullptr)
             blockPos = *dbp;
         if (!FindBlockPos(state, blockPos, nBlockSize+8, nHeight, block.GetBlockTime(), dbp != nullptr))
-            return error("AcceptBlock(): FindBlockPos failed");
+			return error("AcceptBlock(): FindBlockPos failed");
         if (dbp == nullptr)
             if (!WriteBlockToDisk(block, blockPos, chainparams.MessageStart()))
                 AbortNode(state, "Failed to write block");
         if (!ReceivedBlockTransactions(block, state, pindex, blockPos, chainparams.GetConsensus()))
-            return error("AcceptBlock(): ReceivedBlockTransactions failed");
+			return error("AcceptBlock(): ReceivedBlockTransactions failed");
     } catch (const std::runtime_error& e) {
         return AbortNode(state, std::string("System error: ") + e.what());
     }
@@ -3354,7 +3339,7 @@ bool ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<cons
         CheckBlockIndex(chainparams.GetConsensus());
         if (!ret) {
             GetMainSignals().BlockChecked(*pblock, state);
-            return error("%s: AcceptBlock FAILED", __func__);
+            return error("%s: AcceptBlock FAILED Height:%u", __func__, pblock->nHeight);
         }
     }
 

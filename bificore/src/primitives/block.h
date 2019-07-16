@@ -10,6 +10,9 @@
 #include "serialize.h"
 #include "uint256.h"
 
+
+static const int32_t BIFI_UPDATE_V2			= 628550;
+static const int32_t VERSIONBITS_FORK_II	= 0x80000000UL;
 #define DEF_INVALID_COL  ( 9999 )
 
 
@@ -33,9 +36,14 @@ public:
 	uint32_t				nTime;
     uint32_t				nBits;
     uint32_t				nNonce;
+
 	mutable uint32_t		nColNum;
 	mutable uint256			hashSeed;
 	mutable uint256			hashHeader;
+
+	uint32_t				nNonceV2;
+	mutable uint256			hashSeedV2;
+	mutable uint256			hashBlock;
 
     CBlockHeader()
     {
@@ -49,9 +57,16 @@ public:
         READWRITE(this->nVersion);
         READWRITE(hashPrevBlock);
         READWRITE(hashMerkleRoot);
-		if( this->nVersion & 0x80000000UL ){
+		if( this->nVersion & VERSIONBITS_FORK_II ){
 			READWRITE( hashUnique );
 			READWRITE( nHeight );
+			if(this->nHeight >= BIFI_UPDATE_V2){
+				READWRITE( hashSeed );
+				READWRITE( hashHeader );
+				READWRITE( hashSeedV2 );
+				READWRITE( nNonceV2 );
+				READWRITE( hashBlock );
+			}
 		} 
         READWRITE(nTime);
         READWRITE(nBits);
@@ -66,10 +81,13 @@ public:
 		hashUnique.SetNull();
 		hashHeader.SetNull();
 		hashSeed.SetNull();
+		hashSeedV2.SetNull();
+		hashBlock.SetNull();
 		nHeight			=	0;
         nTime			=	0;
         nBits			=	0;
         nNonce			=	0;
+		nNonceV2		=	0;
 		nColNum			=	DEF_INVALID_COL;
     }
 
@@ -78,13 +96,13 @@ public:
         return (nBits == 0);
     }
 
-	uint256 GetHashImp( bool abSaveSeed = false)																						const;
+	uint256 GetHashImp( bool abSaveSeed = false, bool abIsCalSeed = true )																const;
 
     int64_t GetBlockTime() const
     {
         return (int64_t)nTime;
     }
-
+	
 private:
 	void		GetHashBIFI( uint256& aoHashResult, 
 							 unsigned char* apPrivateSeed, 
@@ -98,6 +116,10 @@ private:
  
  	bool		ReadHashMemTmp( uint512Index& aoHashIndex, uint256& aoHash)																const;
  	bool		SaveHashMemTmp( uint512Index& aoHashIndex, uint256& aoHash)																const;
+
+	void		V2GetHeader( bool abSaveSeed)																							const;
+	void		V2GetSeed( bool abSaveSeed, uint32_t ai32Nonce,uint256& aoHash )														const;
+
 };
 
 
@@ -148,9 +170,13 @@ public:
         block.nBits					=	nBits;
         block.nNonce				=	nNonce;
 		block.nColNum				=	nColNum;
+		block.hashSeed				=	hashSeed;
+		block.hashHeader			=	hashHeader;
+		block.hashSeedV2			=	hashSeedV2;
+		block.nNonceV2				=	nNonceV2;
+		block.hashBlock				=	hashBlock;
         return block;
     }
-
     std::string ToString() const;
 };
 

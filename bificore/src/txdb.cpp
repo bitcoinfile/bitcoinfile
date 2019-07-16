@@ -18,6 +18,7 @@
 
 #include <boost/thread.hpp>
 #include "versionbits.h"
+#include "validation.h"
 
 static const char DB_COIN = 'C';
 static const char DB_COINS = 'c';
@@ -278,7 +279,18 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
 					   pcursor->Next();
 					   continue;
 				}
-                CBlockIndex* pindexNew			=	insertBlockIndex(diskindex.GetBlockHash());
+
+				if (diskindex.nHeight >= BIFI_UPDATE_V2){
+					if (diskindex.hashUnique.IsNull() || 
+						diskindex.hashHeader.IsNull() || 
+						diskindex.hashSeed.IsNull() || 
+						diskindex.hashSeedV2.IsNull()){
+						pcursor->Next();
+						continue;
+					}
+				}
+
+                CBlockIndex* pindexNew			=	insertBlockIndex(diskindex.GetBlockHash( true, fEnableLoadSeedCheck  ));
 				pindexNew->pprev				=   insertBlockIndex(diskindex.hashPrev);
                 pindexNew->nHeight				=   diskindex.nHeight;
                 pindexNew->nFile				=   diskindex.nFile;
@@ -291,11 +303,20 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 pindexNew->nNonce				=   diskindex.nNonce;
                 pindexNew->nStatus				=   diskindex.nStatus;
                 pindexNew->nTx					=   diskindex.nTx;
+
 				pindexNew->hashUnique			=	diskindex.hashUnique;
- 				if (!CheckProofOfWork(pindexNew->nVersion, pindexNew->GetBlockHeader().GetHashImp(), pindexNew->nBits, consensusParams, pindexNew->nHeight)){
+				pindexNew->hashHeader			=	diskindex.hashHeader;
+				pindexNew->hashSeed				=	diskindex.hashSeed;
+				pindexNew->hashSeedV2			=	diskindex.hashSeedV2;
+				pindexNew->nNonceV2				=	diskindex.nNonceV2;
+
+ 				if (!CheckProofOfWork(	pindexNew->nVersion, 
+										pindexNew->GetBlockHeader().GetHashImp(true, fEnableLoadSeedCheck ),
+										pindexNew->nBits, 
+										consensusParams, 
+										pindexNew->nHeight )){
  					return error("%s: CheckProofOfWork failed: %s", __func__, pindexNew->ToString());
  				}
- 				
                 pcursor->Next();
             } else {
                 return error("%s: failed to read value", __func__);

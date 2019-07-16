@@ -572,8 +572,8 @@ int main(int argc, char *argv[])
 #endif
 
     SetupEnvironment();
+
     /// 1. Parse command-line options. These take precedence over anything else.
-    // Command-line options take precedence:
     gArgs.ParseParameters(argc, argv);
 
     // Do not refer to data directory yet, this can be overridden by Intro::pickDataDirectory

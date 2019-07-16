@@ -220,6 +220,11 @@ public:
     //! (memory only) Maximum nTime in the chain upto and including this block.
     unsigned int nTimeMax;
 
+	uint256			hashSeed;
+	uint256			hashHeader;
+	uint256			hashSeedV2;
+	uint32_t		nNonceV2;
+
     void SetNull()
     {
         phashBlock = nullptr;
@@ -241,6 +246,11 @@ public:
         nTime			=	0;
         nBits			=	0;
         nNonce			=	0;
+
+		hashHeader		=	uint256();
+		hashSeed		=	uint256();
+		hashSeedV2		=	uint256();
+		nNonceV2		=	0;
     }
 
     CBlockIndex()
@@ -258,6 +268,11 @@ public:
         nTime				=	block.nTime;
         nBits				=	block.nBits;
         nNonce				=	block.nNonce;
+
+		hashHeader			=	block.hashHeader;
+		hashSeed			=	block.hashSeed;
+		hashSeedV2			=	block.hashSeedV2;
+		nNonceV2			=	block.nNonceV2;
     }
 
     CDiskBlockPos GetBlockPos() const {
@@ -290,12 +305,25 @@ public:
         block.nTime					=	nTime;
         block.nBits					=	nBits;
         block.nNonce				=	nNonce;
+
+		block.hashHeader			=	hashHeader;
+		block.hashSeed				=	hashSeed;
+		block.hashSeedV2			=	hashSeedV2;
+		block.nNonceV2				=	nNonceV2;
+		if (nullptr != phashBlock){
+			block.hashBlock				=	*phashBlock;
+		}
         return block;
     }
 
     uint256 GetBlockHash() const
     {
-		return *phashBlock;
+		if (nullptr != phashBlock){
+			return *phashBlock;
+		}else{
+
+			return uint256();
+		}
     }
 
     int64_t GetBlockTime() const
@@ -410,9 +438,19 @@ public:
         READWRITE(nTime);
         READWRITE(nBits);	
         READWRITE(nNonce);
+		if(nHeight>=BIFI_UPDATE_V2){
+			READWRITE(hashHeader);
+			READWRITE(hashSeed);
+			READWRITE(hashSeedV2);
+			READWRITE(nNonceV2);
+			uint256	hashBlock;
+			if(nullptr != phashBlock)	hashBlock = *phashBlock;
+			else						hashBlock.SetNull();
+			READWRITE(hashBlock);
+		}
     }
 
-    uint256 GetBlockHash() const
+    uint256 GetBlockHash( bool abIsSaveHash, bool abIsCalHash ) const
     {
         CBlockHeader block;
         block.nVersion				= nVersion;
@@ -423,7 +461,11 @@ public:
         block.nTime					= nTime;
         block.nBits					= nBits;
         block.nNonce				= nNonce;
-        return block.GetHashImp();
+		block.hashHeader			= hashHeader;
+		block.hashSeed				= hashSeed;
+		block.hashSeedV2			= hashSeedV2;
+		block.nNonceV2				= nNonceV2;
+        return block.GetHashImp( abIsSaveHash, abIsCalHash );
     }
 
 
@@ -432,7 +474,7 @@ public:
         std::string str = "CDiskBlockIndex(";
         str += CBlockIndex::ToString();
         str += strprintf("\n                hashBlock=%s, hashPrev=%s)",
-            GetBlockHash().ToString(),
+            GetBlockHash( false, false ).ToString(),
             hashPrev.ToString());
         return str;
     }
@@ -442,8 +484,11 @@ public:
 class CChain {
 private:
     std::vector<CBlockIndex*> vChain;
-
 public:
+	int m_iMaxHeight;
+	CChain(){
+		m_iMaxHeight = 0;
+	}
     /** Returns the index entry for the genesis block of this chain, or nullptr if none. */
     CBlockIndex *Genesis() const {
         return vChain.size() > 0 ? vChain[0] : nullptr;

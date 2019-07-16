@@ -176,12 +176,15 @@ inline uint256 uint256S(const std::string& str)
 
 
 struct uint512Index{
-	uint256 loLeft;
-	uint256 loRight;
+	uint512Index(){
+		m_iHeight = 0;
+	}
+	uint256  m_oLeft;
+	uint256  m_oRight;
+	uint32_t m_iHeight;
 	friend inline bool operator==(const uint512Index& a, const uint512Index& b) 
 	{ 
-		if (((a.loLeft == b.loLeft) && (a.loRight == b.loRight)))
-		{
+		if ((( a.m_oLeft == b.m_oLeft ) && ( a.m_oRight == b.m_oRight ) ) &&  ( a.m_iHeight == b.m_iHeight )) {
 			return true;
 		}
 		return  false; 
@@ -189,8 +192,9 @@ struct uint512Index{
 
 	friend inline bool operator<(const uint512Index& a, const uint512Index& b) 
 	{ 
-		if  (( a.loLeft  < b.loLeft ) || (( a.loLeft == b.loLeft ) && ( a.loRight < b.loRight)))
-		{
+		if (( a.m_iHeight < b.m_iHeight )  ||
+		    (( a.m_iHeight == b.m_iHeight ) && ( a.m_oLeft < b.m_oLeft  )) || 
+		    (( a.m_iHeight == b.m_iHeight ) && ( a.m_oLeft == b.m_oLeft  ) && ( a.m_oRight < b.m_oRight  ))){
 			return true;
 		}
 		return false; 
@@ -199,7 +203,7 @@ struct uint512Index{
 
 struct Hash512Hasher
 {
-	size_t operator()(const uint512Index& hash) const { return hash.loLeft.GetCheapHash(); }
+	size_t operator()(const uint512Index& hash) const { return hash.m_oLeft.GetCheapHash(); }
 
 };
 

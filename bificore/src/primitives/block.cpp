@@ -15,13 +15,11 @@
 #define							DEF_PER_PBLOCK_SIZE					( 262144 )
 #define							DEF_SELECT							( 65536 )
 #define							DEF_PER_BLOCK_LOTTERY_CNT			( 8192 )
-			
+
 
 std::string													g_sHashFolderRoot = "";
 std::unordered_map< uint512Index, uint256, Hash512Hasher >	g_oHashCatchMap;
 CCriticalSection											g_oHashCatchMapMutex;
-std::unordered_map<uint512Index, uint256, Hash512Hasher>	g_oNewHashCatchMap;
-CCriticalSection											g_oNewHashCatchMapMutex;
 std::unordered_map<uint512Index, uint256, Hash512Hasher>	g_oTempHashMap;
 CCriticalSection											g_oTempHashMapMutex;			
 char*														g_pIndexBeg = 0;
@@ -49,10 +47,10 @@ bool CBlockHeader::ReadHashMemTmp( uint512Index& aoHashIndex , uint256& aoHash )
 
 bool CBlockHeader::SaveHashMemTmp( uint512Index& aoHashIndex, uint256& aoHash) const {
 	LOCK(g_oTempHashMapMutex);
-	if (g_oTempHashMap.size() >1000){
-		g_oTempHashMap.clear();
-	}
+	if ( g_oTempHashMap.size() > 102400 ) g_oTempHashMap.clear();
+
 	std::unordered_map< uint512Index, uint256, Hash512Hasher >::iterator liIter = g_oTempHashMap.find(aoHashIndex);
+	
 	if (liIter == g_oTempHashMap.end()){
 		g_oTempHashMap.insert(std::make_pair(aoHashIndex, aoHash));
 	}
@@ -64,10 +62,6 @@ bool CBlockHeader::SaveHashMem( uint512Index& aoHashIndex, uint256& aoHash) cons
 	std::unordered_map< uint512Index, uint256, Hash512Hasher >::iterator liIter = g_oHashCatchMap.find(aoHashIndex);
 	if (liIter == g_oHashCatchMap.end()){
 		g_oHashCatchMap.insert(std::make_pair(aoHashIndex, aoHash));
-		{
-			LOCK( g_oNewHashCatchMapMutex );
-			g_oNewHashCatchMap.insert(std::make_pair(aoHashIndex , aoHash));
-		}
 	}
 	return true;
 }
@@ -116,75 +110,175 @@ bool CBlockHeader::CreateSeed( uint32_t aui32Nonce, unsigned char* apHashIn, uns
 	return true;
 }
 
-uint256 CBlockHeader::GetHashImp( bool abSaveSeed) const {
+void CBlockHeader::V2GetHeader( bool abSaveSeed ) const{
+	unsigned char szHeader[120]={0};
+	memcpy( szHeader + 0,		( unsigned char* )&nVersion,					4 );
+	memcpy( szHeader + 4,		( unsigned char* )&nHeight,						4 );
+	memcpy( szHeader + 8,		( unsigned char* )hashPrevBlock.begin(),		DEF_HASH_SIZE );
+	memcpy( szHeader + 40,		( unsigned char* )hashMerkleRoot.begin(),		DEF_HASH_SIZE );
+	memcpy( szHeader + 72,		( unsigned char* )hashUnique.begin(),			DEF_HASH_SIZE );
+	memcpy( szHeader + 104,		( unsigned char* )&nBits,						4 );
+	memcpy( szHeader + 108,		( unsigned char* )&nTime,						4 );
+
+	uint512Index loHashIndex;
+	loHashIndex.m_iHeight = nHeight;
+	CSHA256 loCSha256;
+	loCSha256.Reset();
+	loCSha256.Write( ( const unsigned char* )szHeader, 112 );
+	loCSha256.Finalize(loHashIndex.m_oLeft.begin());
+	KeccackHash256( ( const unsigned char* )szHeader, 112, loHashIndex.m_oRight.begin());
+
+	if (!ReadHashMem(loHashIndex, hashHeader)){
+		if (!ReadHashMemTmp(loHashIndex, hashHeader)){
+			CreateSeed( 4096, (unsigned char*)loHashIndex.m_oRight.begin(), hashHeader.begin());
+			if (!abSaveSeed) SaveHashMemTmp(loHashIndex, hashHeader );
+		}
+		if (abSaveSeed) SaveHashMem(loHashIndex, hashHeader);
+	}
+}
+
+void CBlockHeader::V2GetSeed( bool abSaveSeed, uint32_t ai32Nonce, uint256& aoSeed) const{
+	unsigned char szBuffer[ 40 ]={0};
+	memcpy( szBuffer,			( unsigned char* )&ai32Nonce,					4 );
+	memcpy( szBuffer + 4,		( unsigned char* )&nColNum,						4 );
+	memcpy( szBuffer + 8,		( unsigned char* )hashUnique.begin(),			DEF_HASH_SIZE );
+
+	uint512Index loHashIndex;
+	loHashIndex.m_iHeight = nHeight;
+	CSHA256 loCSha256;
+	loCSha256.Reset();
+	loCSha256.Write( ( const unsigned char* )szBuffer, 40 );
+	loCSha256.Finalize(loHashIndex.m_oLeft.begin());
+	KeccackHash256( ( const unsigned char* )szBuffer, 40, loHashIndex.m_oRight.begin());
+	
+	if (!ReadHashMem(loHashIndex, aoSeed)){
+		if (!ReadHashMemTmp(loHashIndex, aoSeed)){
+			CreateSeed( ai32Nonce, (unsigned char*)hashUnique.begin(), aoSeed.begin());
+			if (!abSaveSeed) SaveHashMemTmp(loHashIndex, aoSeed );
+		}
+		if (abSaveSeed) SaveHashMem(loHashIndex, aoSeed);
+	}
+}
+
+uint256 CBlockHeader::GetHashImp( bool abSaveSeed , bool abIsCalSeed ) const {
 	if ( nVersion & VERSIONBITS_FORK_II ){
-		uint256  loHashResult;
-		loHashResult.SetNull();
-		if( hashUnique.IsNull()){
-			return loHashResult;
-		}
-
 		nColNum = hashPrevBlock.GetUint32(0)%DEF_PER_BLOCK_LOTTERY_CNT;
-		hashSeed.SetNull();
+		if( nHeight >= BIFI_UPDATE_V2 ){
+			hashBlock.SetNull();
+			uint32_t luiBMove = nColNum%29;
 
-		char lszIndex[ 150 ] = {0};
-		sprintf( lszIndex,"%u_%u_%u_%u_%u_%u_%u_%u_%u_%u", 
-				 nColNum, hashUnique.GetUint32(0), hashUnique.GetUint32(1), hashUnique.GetUint32(2),
-				 hashUnique.GetUint32(3), hashUnique.GetUint32(4), hashUnique.GetUint32(5),
-				 hashUnique.GetUint32(6), hashUnique.GetUint32(7), nNonce );
-		
-		uint512Index loHashIndex;
-		CSHA256 loCSha256;
-		loCSha256.Reset();
-		loCSha256.Write( ( const unsigned char* )lszIndex, 150 );
-		loCSha256.Finalize(loHashIndex.loLeft.begin());
-		KeccackHash256( ( const unsigned char* )lszIndex, 150, loHashIndex.loRight.begin());
+			hashBlock.SetNull();
 
-		if (!ReadHashMem(loHashIndex, hashSeed)){
-			if (!ReadHashMemTmp(loHashIndex, hashSeed)){
-				CreateSeed( nNonce, (unsigned char*)hashUnique.begin(), hashSeed.begin());
-				if (!abSaveSeed)
-					SaveHashMemTmp(loHashIndex, hashSeed );
+			if( hashUnique.IsNull())				return hashBlock;
+			
+			if ( abIsCalSeed ) {
+				 hashSeed.SetNull();
+				 hashSeedV2.SetNull();
+				 hashHeader.SetNull();
 			}
-			if (abSaveSeed) SaveHashMem(loHashIndex, hashSeed);
-		}
 
-		if (hashSeed.IsNull())	return loHashResult;
+			if ( hashHeader.IsNull() )				V2GetHeader(abSaveSeed);
+			if ( hashHeader.IsNull() ) 				return hashBlock;
+	
+			if ( hashSeed.IsNull() )				V2GetSeed( abSaveSeed, nNonce, hashSeed );
+			if ( hashSeed.IsNull() ) 				return hashBlock;
 
-		if( nHeight  >= 501227 ){
-			if ( ( hashSeed.GetUint32(0) % DEF_SELECT) != 
-				 ( hashPrevBlock.GetUint32(0) % DEF_SELECT ) ){
+			uint32_t luiLeft  = 0;
+			uint32_t luiRight = 0;
+			memcpy(&luiLeft,  hashHeader.begin(), 4 );
+			memcpy(&luiRight, hashSeed.begin()+luiBMove, 4 );
+
+			if ((luiLeft & 0xFEFEFEFE) == (luiRight & 0xFEFEFEFE)){
+
+				 if ( hashSeedV2.IsNull() )			V2GetSeed( abSaveSeed, nNonceV2, hashSeedV2 );
+				 if ( hashSeedV2.IsNull() ) 		return hashBlock;
+					 
+				 char lszBuf64[64], lszBuf32[32];
+				 memcpy(lszBuf64,		hashSeed.begin(), 32 );
+				 memcpy(lszBuf64+32,	hashHeader.begin(), 32 );
+				 KeccackHash256( ( const unsigned char* )lszBuf64, 64, (unsigned char*) lszBuf32);
+								 
+				 memcpy(&luiLeft,  lszBuf32, 4 );
+				 memcpy(&luiRight, hashSeedV2.begin()+luiBMove, 4 );
+
+				 if ((luiLeft&0x84211248) == (luiRight&0x84211248)){
+					 unsigned char lszBuf104[ 104 ] = {0};
+					 memcpy( lszBuf104,				hashHeader.begin(),				DEF_HASH_SIZE );
+					 memcpy( lszBuf104 + 32,		hashSeed.begin(),				DEF_HASH_SIZE );
+					 memcpy( lszBuf104 + 64,		( unsigned char* )&nNonce,		4 );	
+					 memcpy( lszBuf104 + 68,		hashSeedV2.begin(),				DEF_HASH_SIZE );
+					 memcpy( lszBuf104 + 100,		( unsigned char* )&nNonceV2,	4 );	
+					 KeccackHash256(( const unsigned char* )lszBuf104, 104, (unsigned char*) hashBlock.begin());
+				 }
+			}
+			return hashBlock;
+		} else {
+			uint256  loHashResult;
+			loHashResult.SetNull();
+			if( hashUnique.IsNull()){
 				return loHashResult;
 			}
+
+			hashSeed.SetNull();
+
+			char lszIndex[ 150 ] = {0};
+			sprintf( lszIndex,"%u_%u_%u_%u_%u_%u_%u_%u_%u_%u", 
+				nColNum, hashUnique.GetUint32(0), hashUnique.GetUint32(1), hashUnique.GetUint32(2),
+				hashUnique.GetUint32(3), hashUnique.GetUint32(4), hashUnique.GetUint32(5),
+				hashUnique.GetUint32(6), hashUnique.GetUint32(7), nNonce );
+
+			uint512Index loHashIndex;
+			CSHA256 loCSha256;
+			loCSha256.Reset();
+			loCSha256.Write( ( const unsigned char* )lszIndex, 150 );
+			loCSha256.Finalize(loHashIndex.m_oLeft.begin());
+			KeccackHash256( ( const unsigned char* )lszIndex, 150, loHashIndex.m_oRight.begin());
+			if (!ReadHashMem(loHashIndex, hashSeed)){
+				if (!ReadHashMemTmp(loHashIndex, hashSeed)){
+					CreateSeed( nNonce, (unsigned char*)hashUnique.begin(), hashSeed.begin());
+					if (!abSaveSeed)
+						SaveHashMemTmp(loHashIndex, hashSeed );
+				}
+				if (abSaveSeed) SaveHashMem(loHashIndex, hashSeed);
+			}
+
+			if (hashSeed.IsNull())	return loHashResult;
+
+			if( nHeight  >= 501227 ){
+				if ( ( hashSeed.GetUint32(0) % DEF_SELECT) != 
+					( hashPrevBlock.GetUint32(0) % DEF_SELECT ) ){
+						return loHashResult;
+				}
+			}
+			GetHashBIFI( loHashResult, hashSeed.begin(), abSaveSeed, true  );
+			return loHashResult;
 		}
-		GetHashBIFI( loHashResult, hashSeed.begin(), abSaveSeed, true  );
-		return loHashResult;
 	}
 	else return SerializeHash(*this);
 }
 
 void CBlockHeader::GetHashBIFI( uint256&  aoHashResult, unsigned char* apPrivateSeed, bool abSaveSeed, bool abIsMem) const{
 	if ( hashHeader.IsNull()){
-		unsigned char lszHashHeaderBuf[84] =	{0};
-		memcpy( lszHashHeaderBuf,				( unsigned char* )&nVersion,					4);
-		memcpy( lszHashHeaderBuf + 4,			( unsigned char* )hashPrevBlock.begin(),		32);
-		memcpy( lszHashHeaderBuf + 36,			( unsigned char* )hashUnique.begin(),			32);
-		memcpy( lszHashHeaderBuf + 68,			( unsigned char* )hashMerkleRoot.begin(),		4);
-		memcpy( lszHashHeaderBuf + 72,			( unsigned char* )&nBits,						4);
-		memcpy( lszHashHeaderBuf + 76,			( unsigned char* )&nHeight,						4);
-		memcpy( lszHashHeaderBuf + 80,			( unsigned char* )&nTime,						4);
+		unsigned char lszhashHeaderBuf[84] =	{0};
+		memcpy( lszhashHeaderBuf,				( unsigned char* )&nVersion,					4);
+		memcpy( lszhashHeaderBuf + 4,			( unsigned char* )hashPrevBlock.begin(),		32);
+		memcpy( lszhashHeaderBuf + 36,			( unsigned char* )hashUnique.begin(),			32);
+		memcpy( lszhashHeaderBuf + 68,			( unsigned char* )hashMerkleRoot.begin(),		4);
+		memcpy( lszhashHeaderBuf + 72,			( unsigned char* )&nBits,						4);
+		memcpy( lszhashHeaderBuf + 76,			( unsigned char* )&nHeight,						4);
+		memcpy( lszhashHeaderBuf + 80,			( unsigned char* )&nTime,						4);
 		if ( abIsMem )
 		{
  			uint512Index loHashIndex;
  			CSHA256 loCSha256;
  			loCSha256.Reset();
- 			loCSha256.Write(( const unsigned char* )lszHashHeaderBuf, 84);
- 			loCSha256.Finalize(loHashIndex.loLeft.begin());
- 			KeccackHash256( ( const unsigned char* )lszHashHeaderBuf, 84, loHashIndex.loRight.begin());
+ 			loCSha256.Write(( const unsigned char* )lszhashHeaderBuf, 84);
+ 			loCSha256.Finalize(loHashIndex.m_oLeft.begin());
+ 			KeccackHash256( ( const unsigned char* )lszhashHeaderBuf, 84, loHashIndex.m_oRight.begin());
  			if ( !ReadHashMem( loHashIndex, hashHeader ) ){
  				if ( !ReadHashMemTmp( loHashIndex, hashHeader ) ) {
 					char lszHash[DEF_HASH_SIZE] ={0};
- 					KeccackHash256(( const unsigned char* )lszHashHeaderBuf, 84, ( unsigned char* )lszHash );
+ 					KeccackHash256(( const unsigned char* )lszhashHeaderBuf, 84, ( unsigned char* )lszHash );
 					CreateSeed(0, (unsigned char*)lszHash,  hashHeader.begin());				
 					if ( !abSaveSeed ) SaveHashMemTmp(loHashIndex, hashHeader);
 				}
@@ -193,7 +287,7 @@ void CBlockHeader::GetHashBIFI( uint256&  aoHashResult, unsigned char* apPrivate
 		}
 		else{
 			char lszHash[DEF_HASH_SIZE] ={0};
-			KeccackHash256( ( const unsigned char* )lszHashHeaderBuf, 84,(unsigned char*)lszHash);
+			KeccackHash256( ( const unsigned char* )lszhashHeaderBuf, 84,(unsigned char*)lszHash);
 			CreateSeed(0, ( unsigned char* )lszHash, hashHeader.begin() );
 		}
 	}

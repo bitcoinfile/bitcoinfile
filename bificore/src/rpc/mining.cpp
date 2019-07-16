@@ -194,7 +194,7 @@ UniValue generatetoaddress(const JSONRPCRequest& request)
     coinbaseScript->reserveScript = GetScriptForDestination(address.Get());
 
 	return generateBlocks( coinbaseScript, nGenerate, nMaxTries, false);
-}
+	}
 
 UniValue getmininginfo(const JSONRPCRequest& request)
 {
@@ -641,7 +641,8 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             }
         }
     }
-    result.push_back(Pair("version", pblock->nVersion));
+	uint32_t luVer = pblock->nVersion;
+	result.push_back(Pair("version",(uint64_t)luVer));
     result.push_back(Pair("rules", aRules));
     result.push_back(Pair("vbavailable", vbavailable));
     result.push_back(Pair("vbrequired", int(0)));
@@ -983,7 +984,7 @@ static const CRPCCommand commands[] =
     { "mining",             "getblocktemplate",       &getblocktemplate,       true,  {"template_request"} },
     { "mining",             "submitblock",            &submitblock,            true,  {"hexdata","dummy"} },
 
-	{ "generating",         "generatetoaddress",      &generatetoaddress,      true,  {"nblocks","address","maxtries"} },
+	{ "generating",         "generatetoaddress",      &generatetoaddress,      true,  {"nblocks","address","maxtries","addrid"} },
     
     { "util",               "estimatefee",            &estimatefee,            true,  {"nblocks"} },
     { "util",               "estimatesmartfee",       &estimatesmartfee,       true,  {"conf_target", "estimate_mode"} },

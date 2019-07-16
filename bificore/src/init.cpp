@@ -1261,10 +1261,10 @@ void ReadHashFromDesk( void ) {
 					( lszBuf[liPos]		== lcPart ) && 
 					( lszBuf[liPos+97]	== lcPart )) 
 				{
-					memcpy( loKey.loLeft.begin(),	lszBuf+liPos + 1 ,   32 );
-					memcpy( loKey.loRight.begin(),	lszBuf+liPos + 33 ,  32 );
+					memcpy( loKey.m_oLeft.begin(),	lszBuf+liPos + 1 ,   32 );
+					memcpy( loKey.m_oRight.begin(),	lszBuf+liPos + 33 ,  32 );
 					memcpy( loValue.begin(),		lszBuf+liPos + 65 ,  32 );
-					if ( !loKey.loLeft.IsNull() && !loKey.loRight.IsNull() && !loValue.IsNull()){
+					if ( !loKey.m_oLeft.IsNull() && !loKey.m_oRight.IsNull() && !loValue.IsNull()){
 						g_oHashCatchMap.insert(std::make_pair(loKey , loValue));
 						liCnt++;
 					}
@@ -1805,6 +1805,7 @@ bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
         pwallet->postInitProcess(scheduler);
     }
 #endif
-
+	fEnableSyncSeedCheck = gArgs.GetBoolArg("-enablesyncseedcheck", DEFAULT_SYNC_CHECK);
+	fEnableLoadSeedCheck = gArgs.GetBoolArg("-enableloadseedcheck", DEFAULT_LOAD_CHECK);
     return !fRequestShutdown;
 }
